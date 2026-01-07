@@ -24,8 +24,10 @@ if not df.empty:
 else:
     last_calorie, last_fase, last_sgarro = 2500, 1, 0
 
-# Interfaccia di Inserimento
-st.subheader("Inserimento del Giorno")
+# --- NUOVA SEZIONE: SELETTORE DATA ---
+st.subheader("Inserimento Dati")
+data_selezionata = st.date_input("Seleziona il giorno", datetime.now())
+
 peso = st.number_input("Peso (kg)", min_value=30.0, max_value=200.0, step=0.1, format="%.1f")
 calorie_base = st.number_input("Calorie", value=last_calorie, step=50)
 
@@ -42,7 +44,7 @@ if st.button("SALVA DATI"):
     smoothing = "Sì" if last_sgarro > 0 else "No"
     
     new_data = pd.DataFrame([{
-        "Data": datetime.now().strftime("%d/%m/%Y"),
+        "Data": data_selezionata.strftime("%d/%m/%Y"), # Usa la data scelta nel calendario
         "Peso": peso,
         "Calorie": calorie_base,
         "Sgarro": sgarro_val,
@@ -52,30 +54,24 @@ if st.button("SALVA DATI"):
     
     updated_df = pd.concat([df, new_data], ignore_index=True)
     conn.update(data=updated_df)
-    st.success("Dati salvati!")
+    st.success(f"Dati salvati per il giorno {data_selezionata.strftime('%d/%m/%Y')}!")
     st.rerun()
 
 # --- SEZIONE ANALISI E GRAFICO ---
 if not df.empty:
     st.divider()
-    # Filtriamo i dati della fase attuale e puliamo dai "Sì" del Trend Smoothing
     df_fase = df[df['ID_Fase'] == last_fase].copy()
     df_clean = df_fase[df_fase['Trend_Smoothing'] == "No"].copy()
     
     if not df_clean.empty:
         st.subheader(f"Andamento Fase {last_fase}")
-        # Assicuriamoci che il peso sia visto come numero
         df_clean['Peso'] = pd.to_numeric(df_clean['Peso'], errors='coerce')
         st.line_chart(df_clean.set_index('Data')['Peso'])
         
-        # LOGICA ALERT STALLO (21 giorni di dati puliti)
         if len(df_clean) >= 21:
             y = df_clean['Peso'].values
             x = np.arange(len(y))
-            # Calcolo della pendenza (m)
             m, b = np.polyfit(x, y, 1)
-            
-            # Se la variazione è minima (quasi piatta), scatta l'alert
             if abs(m) < 0.005: 
                 st.error("🚨 Stallo rilevato (21 giorni), contatta il nutrizionista")
             else:

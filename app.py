@@ -2,6 +2,7 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
 from datetime import datetime
 
 st.set_page_config(page_title="Kyber", layout="centered")
@@ -24,7 +25,7 @@ if not df.empty:
 else:
     last_calorie, last_fase, last_sgarro = 2500, 1, 0
 
-# --- NUOVA SEZIONE: SELETTORE DATA ---
+# --- INSERIMENTO DATI ---
 st.subheader("Inserimento Dati")
 data_selezionata = st.date_input("Seleziona il giorno", datetime.now())
 
@@ -44,7 +45,7 @@ if st.button("SALVA DATI"):
     smoothing = "Sì" if last_sgarro > 0 else "No"
     
     new_data = pd.DataFrame([{
-        "Data": data_selezionata.strftime("%d/%m/%Y"), # Usa la data scelta nel calendario
+        "Data": data_selezionata.strftime("%d/%m/%Y"),
         "Peso": peso,
         "Calorie": calorie_base,
         "Sgarro": sgarro_val,
@@ -57,21 +58,52 @@ if st.button("SALVA DATI"):
     st.success(f"Dati salvati per il giorno {data_selezionata.strftime('%d/%m/%Y')}!")
     st.rerun()
 
-# --- SEZIONE ANALISI E GRAFICO ---
+# --- SEZIONE GRAFICO AVANZATO ---
 if not df.empty:
     st.divider()
+    # Filtro dati fase attuale e pulizia sgarri
     df_fase = df[df['ID_Fase'] == last_fase].copy()
     df_clean = df_fase[df_fase['Trend_Smoothing'] == "No"].copy()
     
     if not df_clean.empty:
         st.subheader(f"Andamento Fase {last_fase}")
-        df_clean['Peso'] = pd.to_numeric(df_clean['Peso'], errors='coerce')
-        st.line_chart(df_clean.set_index('Data')['Peso'])
         
+        # Assicuriamoci che i dati siano nel formato corretto
+        df_clean['Peso'] = pd.to_numeric(df_clean['Peso'], errors='coerce')
+        # Ordiniamo per data per evitare linee "incrociate"
+        df_clean['Data_dt'] = pd.to_datetime(df_clean['Data'], format='%d/%m/%Y')
+        df_clean = df_clean.sort_values('Data_dt')
+
+        # Creazione grafico con Plotly
+        fig = go.Figure()
+
+        fig.add_trace(go.Scatter(
+            x=df_clean['Data'],
+            y=df_clean['Peso'],
+            mode='lines+markers+text', # Linea + Pallini + Testo
+            text=df_clean['Peso'],      # Il numero da mostrare
+            textposition="top center", # Posizione del numero
+            line=dict(color='#1f77b4', width=3),
+            marker=dict(size=10, symbol='circle'),
+            textfont=dict(size=12, color="white" if st.get_option("theme.base") == "dark" else "black")
+        ))
+
+        fig.update_layout(
+            margin=dict(l=20, r=20, t=20, b=20),
+            xaxis_title="Data",
+            yaxis_title="Peso (kg)",
+            hovermode="x unified",
+            showlegend=False,
+            height=400
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # LOGICA ALERT STALLO
         if len(df_clean) >= 21:
-            y = df_clean['Peso'].values
-            x = np.arange(len(y))
-            m, b = np.polyfit(x, y, 1)
+            y_vals = df_clean['Peso'].values
+            x_vals = np.arange(len(y_vals))
+            m, b = np.polyfit(x_vals, y_vals, 1)
             if abs(m) < 0.005: 
                 st.error("🚨 Stallo rilevato (21 giorni), contatta il nutrizionista")
             else:
